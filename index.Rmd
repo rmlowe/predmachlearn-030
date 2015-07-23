@@ -8,7 +8,11 @@ output: html_document
 First we subdivide `pml-training.csv` into training and cross-validation sets.
 
 ```{r}
-training <- read.csv(file = "pml-training.csv")
+pml <- read.csv(file = "pml-training.csv", na.strings = c("NA", "#DIV/0!"))
 library(caret)
-createDataPartition(y = training$classe, p = 0.6, )
+inTrain <- createDataPartition(y = pml$classe, p = 0.75, list = FALSE)
+training <- pml[inTrain, ]
+testing <- pml[-inTrain, ]
+#preProc <- preProcess(x = pml, method = "pca", pcaComp = 2)
+#modelFit <- train(classe ~ ., data = training, method = "glm")
 ```
