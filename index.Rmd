@@ -8,11 +8,31 @@ output: html_document
 First we subdivide `pml-training.csv` into training and cross-validation sets.
 
 ```{r}
-pml <- read.csv(file = "pml-training.csv", na.strings = c("NA", "#DIV/0!"))
+rawPml <- read.csv(file = "pml-training.csv", na.strings = c("NA", "#DIV/0!"))
+
+# Drop zero-variance variables
+drops <- c("kurtosis_yaw_belt",
+           "skewness_yaw_belt",
+           "amplitude_yaw_belt",
+           "kurtosis_yaw_dumbbell",
+           "skewness_yaw_dumbbell",
+           "amplitude_yaw_dumbbell",
+           "kurtosis_yaw_forearm",
+           "skewness_yaw_forearm",
+           "amplitude_yaw_forearm")
+pml <- rawPml[, !(names(rawPml) %in% drops)]
+
 library(caret)
 inTrain <- createDataPartition(y = pml$classe, p = 0.75, list = FALSE)
 training <- pml[inTrain, ]
 testing <- pml[-inTrain, ]
-#preProc <- preProcess(x = pml, method = "pca", pcaComp = 2)
+dummies <- dummyVars(formula = classe ~ ., data = training)
+numOnly <- predict(object = dummies, newdata = training)
+# numOnlyDf <- as.data.frame(numOnly)
+preObj <- preProcess(numOnlyDf, method = "knnImpute")
+
+# This fails with a cryptic message, need to impute data?
+preProc <- preProcess(x = numOnly, method = "pca", pcaComp = 2)
+
 #modelFit <- train(classe ~ ., data = training, method = "glm")
 ```
