@@ -8,31 +8,42 @@ output: html_document
 First we subdivide `pml-training.csv` into training and cross-validation sets.
 
 ```{r}
-rawPml <- read.csv(file = "pml-training.csv", na.strings = c("NA", "#DIV/0!"))
-
-# Drop zero-variance variables
-drops <- c("kurtosis_yaw_belt",
-           "skewness_yaw_belt",
-           "amplitude_yaw_belt",
-           "kurtosis_yaw_dumbbell",
-           "skewness_yaw_dumbbell",
-           "amplitude_yaw_dumbbell",
-           "kurtosis_yaw_forearm",
-           "skewness_yaw_forearm",
-           "amplitude_yaw_forearm")
-pml <- rawPml[, !(names(rawPml) %in% drops)]
+# Omit the row numbers
+pmlTraining <- read.csv(file = "pml-training.csv", na.strings = c("NA", "#DIV/0!"))[, 2:160]
+pmlTesting <- read.csv(file = "pml-testing.csv", na.strings = c("NA", "#DIV/0!"))[, 2:160]
 
 library(caret)
-inTrain <- createDataPartition(y = pml$classe, p = 0.75, list = FALSE)
-training <- pml[inTrain, ]
-testing <- pml[-inTrain, ]
+inTrain <- createDataPartition(y = pmlTraining$classe, p = 0.75, list = FALSE)
+training <- pmlTraining[inTrain, ]
+testing <- pmlTraining[-inTrain, ]
 dummies <- dummyVars(formula = classe ~ ., data = training)
 numOnly <- predict(object = dummies, newdata = training)
-# numOnlyDf <- as.data.frame(numOnly)
-preObj <- preProcess(numOnlyDf, method = "knnImpute")
+numOnlyDf <- as.data.frame(numOnly)
+
+# Remove variables with near zero variance
+#nsv <- numOnlyDf[, -nearZeroVar(numOnlyDf)]
+
+#preObj <- preProcess(numOnlyDf, method = "knnImpute")
+#imputed <- predict(preObj, numOnlyDf)
+
+#prComp <- prcomp(numOnly, scale = TRUE)
 
 # This fails with a cryptic message, need to impute data?
-preProc <- preProcess(x = numOnly, method = "pca", pcaComp = 2)
+preProc <- preProcess(x = nsv, method = "pca", pcaComp = 2)
 
 #modelFit <- train(classe ~ ., data = training, method = "glm")
+```
+
+Use a tree.
+
+```{r}
+drop <- nearZeroVar(training)
+nsv <- training[, -drop]
+modFit <- train(form = classe ~ ., method = "rpart", data = nsv)
+modFit$finalModel
+plot(x = modFit$finalModel, uniform = TRUE, main = "Classification Tree")
+text(x = modFit$finalModel, use.n = TRUE, all = TRUE, cex = 0.8)
+fancyRpartPlot(modFit$finalModel)
+predictions <- predict(modFit, newdata = testing[, -drop])
+confusionMatrix(data = predict(modFit, newdata = testing[, -drop]), reference = testing$classe)
 ```
