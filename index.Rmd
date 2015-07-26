@@ -5,20 +5,49 @@ date: "20 July 2015"
 output: html_document
 ---
 
-First we subdivide `pml-training.csv` into training and cross-validation sets.
+First we load the data (omitting row numbers, which will confuse the model since the observations are sorted by outcome).
 
 ```{r}
-# Omit the row numbers
 pmlTraining <- read.csv(file = "pml-training.csv", na.strings = c("NA", "#DIV/0!"))[, 2:160]
 pmlTesting <- read.csv(file = "pml-testing.csv", na.strings = c("NA", "#DIV/0!"))[, 2:160]
+```
 
+From visual inspection of the data it's apparent that many variables have mostly `NA` values. Let's look at the proportion of `NA` values for each variable.
+
+```{r}
+avgNA <- apply(pmlTraining, 2, function(v) { sum(is.na(v)) / nrow(pmlTraining)  })
+avgNA
+```
+
+Many columns have mostly NA values. Let's remove these.
+
+```{r}
+mostlyNA <- avgNA >= 0.9
+filteredTrain <- pmlTraining[, !mostlyNA]
+```
+
+Next we create dummy variables from the factors.
+
+```{r}
 library(caret)
+dummies <- dummyVars(classe ~ ., data = filteredTrain)
+pmldv <- as.data.frame(predict(dummies, newdata = filteredTrain))
+```
+
+Ignore zero-variance predictors.
+
+```{r}
+nzv <- nearZeroVar(pmldv)
+filteredPredictors <- pmldv[, -nzv]
+```
+
+Now create training and test sets.
+
+```{r}
 inTrain <- createDataPartition(y = pmlTraining$classe, p = 0.75, list = FALSE)
-training <- pmlTraining[inTrain, ]
-testing <- pmlTraining[-inTrain, ]
-dummies <- dummyVars(formula = classe ~ ., data = training)
-numOnly <- predict(object = dummies, newdata = training)
-numOnlyDf <- as.data.frame(numOnly)
+trainPredictors <- filteredPredictors[inTrain, ]
+testing <- filteredPredictors[-inTrain, ]
+#numOnlyDf <- as.data.frame(numOnly)
 
 # Remove variables with near zero variance
 #nsv <- numOnlyDf[, -nearZeroVar(numOnlyDf)]
@@ -34,17 +63,40 @@ numOnlyDf <- as.data.frame(numOnly)
 #modelFit <- train(classe ~ ., data = training, method = "glm")
 ```
 
+We plot the observations in the training set against the first two principal components. We find clear clusters in the observations, however these clusters don't appear to correspond with the exercise classes.
+
+```{r}
+preProcValues <- preProcess(x = trainPredictors, method = "pca", pcaComp = 2)
+trainPCA <- predict(preProcValues, trainPredictors)
+plotdata <- data.frame(trainPCA,
+                       classe = pmlTraining$classe[inTrain],
+                       user_name = pmlTraining$user_name[inTrain])
+ggplot(data = plotdata, mapping = aes(x = PC1, y = PC2, colour = classe)) + geom_point()
+```
+
+The plot below shows that the clusters actually correspond with `user_name`.
+
+```{r}
+ggplot(data = plotdata, mapping = aes(x = PC1, y = PC2, colour = user_name)) + geom_point()
+```
+
+So it appears fairly straightforward to distinguish the observations based on `user_name`, but it might be harder distinguish the observations based on exercise class.
+
 Use a tree.
 
 ```{r}
-drop <- nearZeroVar(training)
-nsv <- training[, -drop]
-modFit <- train(form = classe ~ ., method = "rpart", data = nsv)
+#drop <- nearZeroVar(training)
+#nsv <- training[, -drop]
+#preObj <- preProcess(nsv, method = "knnImpute")
+training <- data.frame(trainPredictors, classe = pmlTraining$classe[inTrain])
+modFit <- train(form = classe ~ ., data = training, method = "rpart")
 modFit$finalModel
 plot(x = modFit$finalModel, uniform = TRUE, main = "Classification Tree")
 text(x = modFit$finalModel, use.n = TRUE, all = TRUE, cex = 0.8)
 library(rattle)
 fancyRpartPlot(modFit$finalModel)
-predictions <- predict(modFit, newdata = testing[, -drop])
+confusionMatrix(data = predict(modFit, newdata = training), reference = training$classe)
+#newdata <- testing[, -drop]
+#predictions <- predict(modFit, newdata = newdata)
 #confusionMatrix(data = predict(modFit, newdata = testing[, -drop]), reference = testing$classe)
 ```
