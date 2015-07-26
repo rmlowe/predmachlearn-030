@@ -5,7 +5,9 @@ date: "20 July 2015"
 output: html_document
 ---
 
-First we load the data (omitting row numbers, which will confuse the model since the observations are sorted by outcome).
+### Loading the data
+
+First we load the data (omitting row numbers in the first column, which will confuse the model since the observations are sorted by outcome).
 
 ```{r}
 pmlTraining <- read.csv(file = "pml-training.csv", na.strings = c("NA", "#DIV/0!"))[, 2:160]
@@ -26,9 +28,11 @@ filteredTrain <- pmlTraining[, avgNA <= 0.9]
 filteredTest <- pmlTesting[, avgNA <= 0.9]
 ```
 
-Next we create dummy variables from the factors.
+### Creating dummy variables
 
-```{r}
+Next we create dummy (numeric) variables from the factors.
+
+```{r, message=FALSE}
 library(caret)
 merged <- rbind(filteredTest[, -59], filteredTrain[, -59])
 dummies <- dummyVars(~ ., data = merged)
@@ -36,6 +40,8 @@ dv <- as.data.frame(predict(dummies, newdata = merged))
 pmldv <- dv[21:nrow(dv), ]
 pmldvTest <- dv[1:20, ]
 ```
+
+### Predictors with near zero-variance
 
 We will ignore variables with near zero-variance.
 
@@ -45,7 +51,9 @@ filteredPredictors <- pmldv[, -nzv]
 filteredPredictorsTest <- pmldvTest[, -nzv]
 ```
 
-Now create training and test sets.
+### Splitting the data
+
+Now create training and cross-validation sets, preserving the overall class distribution.
 
 ```{r}
 set.seed(745363615)
@@ -53,6 +61,8 @@ inTrain <- createDataPartition(y = pmlTraining$classe, p = 0.75, list = FALSE)
 trainPredictors <- filteredPredictors[inTrain, ]
 cvPredictors <- filteredPredictors[-inTrain, ]
 ```
+
+### Principal components
 
 We plot the observations in the training set against the first two principal components. We find clear clusters in the observations, however these clusters don't appear to correspond with the exercise classes.
 
@@ -73,34 +83,49 @@ ggplot(data = plotdata, mapping = aes(x = PC1, y = PC2, colour = user_name)) + g
 
 So it appears fairly straightforward to distinguish the observations based on `user_name`, but it might be harder distinguish the observations based on exercise class.
 
+### A CART model
+
 We fit a CART model.
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 training <- data.frame(trainPredictors, classe = pmlTraining$classe[inTrain])
 cv <- data.frame(cvPredictors, classe = pmlTraining$classe[-inTrain])
 cart <- train(form = classe ~ ., data = training, method = "rpart")
-cart$finalModel
-plot(x = cart$finalModel, uniform = TRUE, main = "Classification Tree")
-text(x = cart$finalModel, use.n = TRUE, all = TRUE, cex = 0.8)
 library(rattle)
 fancyRpartPlot(cart$finalModel)
+```
+```{r}
 trainCM <- confusionMatrix(data = predict(cart, newdata = training), reference = training$classe)
 trainCM
 cvCM <- confusionMatrix(data = predict(cart, newdata = cv), reference = cv$classe)
 cvCM
 ```
 
-The accuracy in the training set is only `r signif(x = trainCM$overall[1], digits = 3)`, and `r signif(x = cvCM$overall[1], digits = 3)` in the cross-validation set. Hopefully we can do better.
+The in sample error for the CART model is only `r signif(x = trainCM$overall[1], digits = 3)`, and the out of sample error (as determined by cross-validation) is `r signif(x = cvCM$overall[1], digits = 3)`. Hopefully we can do better.
+
+### A random forest
 
 Let's try a random forest.
 
+```{r, include=FALSE}
+library(randomForest)
+```
 ```{r}
-samp <- training[sample.int(n = nrow(training), size = 0.2 * nrow(training)), ]
-forest <- train(form = classe ~ ., data = samp, method = "rf")
+# This takes several hours, so used cached model if available
+getForest <- function(name) {
+  if (file.exists(name)) {
+    readRDS(file = name)
+  } else {
+    result <- train(form = classe ~ ., data = training, method = "rf")
+    saveRDS(object = result, file = name)
+    result
+  }
+}
+forest <- getForest("forest.rds")
 trainCM <- confusionMatrix(data = predict(forest, newdata = training), reference = training$classe)
 trainCM
 cvCM <- confusionMatrix(data = predict(forest, newdata = cv), reference = cv$classe)
 cvCM
 ```
 
-The accuracy in the training set is `r signif(x = trainCM$overall[1], digits = 3)`, and `r signif(x = cvCM$overall[1], digits = 3)` in the cross-validation set.
+Thus the in sample error for the random forest is `r signif(x = trainCM$overall[1], digits = 3)`, and the out of sample error (as determined by cross-validation) is `r signif(x = cvCM$overall[1], digits = 3)`. So the random forest is clearly greatly superior to the simple CART model for this prediction task.
