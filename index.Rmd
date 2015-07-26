@@ -19,48 +19,39 @@ avgNA <- apply(pmlTraining, 2, function(v) { sum(is.na(v)) / nrow(pmlTraining)  
 avgNA
 ```
 
-Many columns have mostly NA values. Let's remove these.
+We'll remove variables with more than 90% of the values missing.
 
 ```{r}
-mostlyNA <- avgNA >= 0.9
-filteredTrain <- pmlTraining[, !mostlyNA]
+filteredTrain <- pmlTraining[, avgNA <= 0.9]
+filteredTest <- pmlTesting[, avgNA <= 0.9]
 ```
 
 Next we create dummy variables from the factors.
 
 ```{r}
 library(caret)
-dummies <- dummyVars(classe ~ ., data = filteredTrain)
-pmldv <- as.data.frame(predict(dummies, newdata = filteredTrain))
+merged <- rbind(filteredTest[, -59], filteredTrain[, -59])
+dummies <- dummyVars(~ ., data = merged)
+dv <- as.data.frame(predict(dummies, newdata = merged))
+pmldv <- dv[21:nrow(dv), ]
+pmldvTest <- dv[1:20, ]
 ```
 
-Ignore zero-variance predictors.
+We will ignore variables with near zero-variance.
 
 ```{r}
 nzv <- nearZeroVar(pmldv)
 filteredPredictors <- pmldv[, -nzv]
+filteredPredictorsTest <- pmldvTest[, -nzv]
 ```
 
 Now create training and test sets.
 
 ```{r}
+set.seed(745363615)
 inTrain <- createDataPartition(y = pmlTraining$classe, p = 0.75, list = FALSE)
 trainPredictors <- filteredPredictors[inTrain, ]
-testing <- filteredPredictors[-inTrain, ]
-#numOnlyDf <- as.data.frame(numOnly)
-
-# Remove variables with near zero variance
-#nsv <- numOnlyDf[, -nearZeroVar(numOnlyDf)]
-
-#preObj <- preProcess(numOnlyDf, method = "knnImpute")
-#imputed <- predict(preObj, numOnlyDf)
-
-#prComp <- prcomp(numOnly, scale = TRUE)
-
-# This fails with a cryptic message, need to impute data?
-#preProc <- preProcess(x = nsv, method = "pca", pcaComp = 2)
-
-#modelFit <- train(classe ~ ., data = training, method = "glm")
+cvPredictors <- filteredPredictors[-inTrain, ]
 ```
 
 We plot the observations in the training set against the first two principal components. We find clear clusters in the observations, however these clusters don't appear to correspond with the exercise classes.
@@ -82,21 +73,34 @@ ggplot(data = plotdata, mapping = aes(x = PC1, y = PC2, colour = user_name)) + g
 
 So it appears fairly straightforward to distinguish the observations based on `user_name`, but it might be harder distinguish the observations based on exercise class.
 
-Use a tree.
+We fit a CART model.
 
 ```{r}
-#drop <- nearZeroVar(training)
-#nsv <- training[, -drop]
-#preObj <- preProcess(nsv, method = "knnImpute")
 training <- data.frame(trainPredictors, classe = pmlTraining$classe[inTrain])
-modFit <- train(form = classe ~ ., data = training, method = "rpart")
-modFit$finalModel
-plot(x = modFit$finalModel, uniform = TRUE, main = "Classification Tree")
-text(x = modFit$finalModel, use.n = TRUE, all = TRUE, cex = 0.8)
+cv <- data.frame(cvPredictors, classe = pmlTraining$classe[-inTrain])
+cart <- train(form = classe ~ ., data = training, method = "rpart")
+cart$finalModel
+plot(x = cart$finalModel, uniform = TRUE, main = "Classification Tree")
+text(x = cart$finalModel, use.n = TRUE, all = TRUE, cex = 0.8)
 library(rattle)
-fancyRpartPlot(modFit$finalModel)
-confusionMatrix(data = predict(modFit, newdata = training), reference = training$classe)
-#newdata <- testing[, -drop]
-#predictions <- predict(modFit, newdata = newdata)
-#confusionMatrix(data = predict(modFit, newdata = testing[, -drop]), reference = testing$classe)
+fancyRpartPlot(cart$finalModel)
+trainCM <- confusionMatrix(data = predict(cart, newdata = training), reference = training$classe)
+trainCM
+cvCM <- confusionMatrix(data = predict(cart, newdata = cv), reference = cv$classe)
+cvCM
 ```
+
+The accuracy in the training set is only `r signif(x = trainCM$overall[1], digits = 3)`, and `r signif(x = cvCM$overall[1], digits = 3)` in the cross-validation set. Hopefully we can do better.
+
+Let's try a random forest.
+
+```{r}
+samp <- training[sample.int(n = nrow(training), size = 0.2 * nrow(training)), ]
+forest <- train(form = classe ~ ., data = samp, method = "rf")
+trainCM <- confusionMatrix(data = predict(forest, newdata = training), reference = training$classe)
+trainCM
+cvCM <- confusionMatrix(data = predict(forest, newdata = cv), reference = cv$classe)
+cvCM
+```
+
+The accuracy in the training set is `r signif(x = trainCM$overall[1], digits = 3)`, and `r signif(x = cvCM$overall[1], digits = 3)` in the cross-validation set.
