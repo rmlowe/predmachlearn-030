@@ -29,7 +29,7 @@ numOnlyDf <- as.data.frame(numOnly)
 #prComp <- prcomp(numOnly, scale = TRUE)
 
 # This fails with a cryptic message, need to impute data?
-preProc <- preProcess(x = nsv, method = "pca", pcaComp = 2)
+#preProc <- preProcess(x = nsv, method = "pca", pcaComp = 2)
 
 #modelFit <- train(classe ~ ., data = training, method = "glm")
 ```
@@ -43,7 +43,8 @@ modFit <- train(form = classe ~ ., method = "rpart", data = nsv)
 modFit$finalModel
 plot(x = modFit$finalModel, uniform = TRUE, main = "Classification Tree")
 text(x = modFit$finalModel, use.n = TRUE, all = TRUE, cex = 0.8)
+library(rattle)
 fancyRpartPlot(modFit$finalModel)
 predictions <- predict(modFit, newdata = testing[, -drop])
-confusionMatrix(data = predict(modFit, newdata = testing[, -drop]), reference = testing$classe)
+#confusionMatrix(data = predict(modFit, newdata = testing[, -drop]), reference = testing$classe)
 ```
