@@ -7,7 +7,7 @@ output: html_document
 
 ### Loading the data
 
-First we load the data (omitting row numbers in the first column, which will confuse the model since the observations are sorted by outcome).
+First we load the data (omitting row numbers in the first column, which will confuse the model since the observations are sorted by outcome). Many cells contain the text `#DIV/0!`; we treat these as missing values.
 
 ```{r}
 pmlTraining <- read.csv(file = "pml-training.csv", na.strings = c("NA", "#DIV/0!"))[, 2:160]
@@ -17,7 +17,7 @@ pmlTesting <- read.csv(file = "pml-testing.csv", na.strings = c("NA", "#DIV/0!")
 From visual inspection of the data it's apparent that many variables have mostly `NA` values. Let's look at the proportion of `NA` values for each variable.
 
 ```{r}
-avgNA <- apply(pmlTraining, 2, function(v) { sum(is.na(v)) / nrow(pmlTraining)  })
+avgNA <- apply(pmlTraining, 2, function(v) { mean(is.na(v))  })
 avgNA
 ```
 
